@@ -1,0 +1,103 @@
+name: Sync Railway volume files
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sync-volume:
+    runs-on: ubuntu-latest
+
+    env:
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      PROJECT_ID: 03ed9a91-0a49-4332-8e6e-4a7aa213b05c
+      ENVIRONMENT_ID: b51dc153-f5aa-4fa3-9c0a-39f19b3f8402
+      SERVICE_ID: ae672c1c-8a7f-4fe8-a71e-9ed46fa2c9c1
+      DEST_DIR: data
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.RAILWAY_SSH_PRIVATE_KEY }}" > ~/.ssh/railway_volume_sync
+          chmod 600 ~/.ssh/railway_volume_sync
+
+          ssh-keyscan -H ssh.railway.com >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Pull task folders from Railway volume
+        # Volume layout (see app/storage.py and app/settings.py):
+        #   <task_id>/task.yml
+        #   <task_id>/student_codes.csv
+        #   <task_id>/conversation-guidance.md
+        #   <task_id>/grading-guidance.md
+        #   <task_id>/ai_marks.csv
+        #   <task_id>/conversations/*.json
+        #   <task_id>/uploads/*.{pdf,png,jpg,...}
+        #
+        # We mirror everything into data/, then copy the per-task config files
+        # into config/tasks/ as the bootstrap seed used by _bootstrap_tasks_dir.
+        # The seed must live outside the data/ volume mount on Railway,
+        # otherwise the mount hides it at runtime.
+        run: |
+          mkdir -p "$DEST_DIR" config/tasks
+
+          railway ssh \
+            --project="$PROJECT_ID" \
+            --environment="$ENVIRONMENT_ID" \
+            --service="$SERVICE_ID" \
+            -i ~/.ssh/railway_volume_sync \
+            -- sh -lc '
+              cd "$RAILWAY_VOLUME_MOUNT_PATH"
+              find . -type f -print0 \
+                | tar --null -czf - --files-from=-
+            ' > /tmp/railway-volume-files.tar.gz
+
+          # Wipe previous contents so deletions on the volume propagate.
+          find "$DEST_DIR" -mindepth 1 -delete
+          find config/tasks -mindepth 1 -delete
+
+          tar -xzf /tmp/railway-volume-files.tar.gz -C "$DEST_DIR"
+
+          # Refresh the seed: copy each task's config files (not uploads,
+          # conversations, or ai_marks) into config/tasks/<id>/.
+          SEED_FILES='task.yml student_codes.csv conversation-guidance.md grading-guidance.md'
+          for task_path in "$DEST_DIR"/*/; do
+            [ -d "$task_path" ] || continue
+            task_id="$(basename "$task_path")"
+            mkdir -p "config/tasks/$task_id"
+            for name in $SEED_FILES; do
+              if [ -f "$task_path$name" ]; then
+                cp -a "$task_path$name" "config/tasks/$task_id/$name"
+              fi
+            done
+          done
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "$DEST_DIR" config/tasks
+
+          if git diff --cached --quiet; then
+            echo "No volume changes to commit."
+          else
+            git commit -m "Sync Railway volume files"
+            git push
+          fi

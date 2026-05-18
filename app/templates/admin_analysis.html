@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Analysis — {{ task.title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <main class="shell analysis-shell">
+      <section class="panel">
+        <div class="masthead">
+          <div>
+            <p class="eyebrow">{{ task.task_id }}</p>
+            <h1>Analysis — {{ task.title }}</h1>
+            <p class="muted">
+              {{ with_session }} / {{ total_students }} students have completed an AI session.
+              Most recent attempt is used per student.
+            </p>
+          </div>
+          <a class="admin-link" href="/admin">← Back to admin</a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Coverage and grades</h2>
+        <p class="note">
+          Every student from <code>student_codes.csv</code> is listed. Missing AI sessions show as dashes.
+          <code>diff = AI − instructor</code>.
+        </p>
+        <div class="table-scroll">
+          <table class="analysis-table">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Code</th>
+                <th>Dimension</th>
+                <th>AI</th>
+                <th>Instructor</th>
+                <th>Diff</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in coverage %}
+                <tr class="{% if not row.has_session %}muted-row{% endif %}">
+                  <td>{{ row.student_name }}</td>
+                  <td>{{ row.student_code }}</td>
+                  <td>{{ row.dimension }}</td>
+                  <td>{{ "%.0f"|format(row.ai_score) if row.ai_score is not none else "—" }}</td>
+                  <td>{{ "%.0f"|format(row.instructor_score) if row.instructor_score is not none else "—" }}</td>
+                  <td class="{% if row.diff is not none and row.diff > 0 %}diff-pos{% elif row.diff is not none and row.diff < 0 %}diff-neg{% endif %}">
+                    {% if row.diff is not none %}{{ "%+.0f"|format(row.diff) }}{% else %}—{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Agreement statistics</h2>
+        <p class="note">
+          Computed only on students who have both AI and instructor scores for the dimension.
+          Pearson r measures linear agreement on the 0–100 scale; Spearman ρ measures whether AI ranks
+          students the same as the instructor. Mean signed diff is positive when AI grades higher.
+        </p>
+        {% for dim, s in stats_per_dim.items() %}
+          <div class="stats-block">
+            <h3>{{ dim }}</h3>
+            {% if s.n < 2 %}
+              <p class="muted">Not enough paired observations (n = {{ s.n }}).</p>
+            {% else %}
+              <ul class="stats-list">
+                <li><strong>n</strong>: {{ s.n }}</li>
+                <li><strong>Pearson r</strong>:
+                  {% if s.pearson is not none %}{{ "%+.3f"|format(s.pearson) }}{% else %}—{% endif %}
+                  {% if s.pearson_ci_lo is not none and s.pearson_ci_hi is not none %}
+                    (95% CI [{{ "%+.3f"|format(s.pearson_ci_lo) }}, {{ "%+.3f"|format(s.pearson_ci_hi) }}])
+                  {% endif %}
+                </li>
+                <li><strong>Spearman ρ</strong>:
+                  {% if s.spearman is not none %}{{ "%+.3f"|format(s.spearman) }}{% else %}—{% endif %}
+                </li>
+                <li><strong>Mean signed diff (AI − instructor)</strong>: {{ "%+.2f"|format(s.mean_diff) }}</li>
+                <li><strong>Mean absolute diff</strong>: {{ "%.2f"|format(s.mean_abs_diff) }}</li>
+              </ul>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="panel">
+        <h2>Plots</h2>
+        <p class="note">
+          Scatter: instructor (x) vs AI (y) with y = x reference line. Bars: per-student signed difference,
+          red where AI graded higher.
+        </p>
+        {% for dim in stats_per_dim.keys() %}
+          <div class="chart-block">
+            <h3>{{ dim }}</h3>
+            <div class="chart-pair">
+              <div class="chart-cell"><canvas id="scatter-{{ loop.index0 }}"></canvas></div>
+              <div class="chart-cell"><canvas id="bars-{{ loop.index0 }}"></canvas></div>
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="panel">
+        <h2>Per-student summaries</h2>
+        {% if not student_blocks %}
+          <p class="note">No students have completed a session yet.</p>
+        {% endif %}
+        {% for block in student_blocks %}
+          <article class="student-block">
+            <header>
+              <h3>
+                {% if block.session_href %}
+                  <a href="{{ block.session_href }}">{{ block.student_name }}</a>
+                {% else %}
+                  {{ block.student_name }}
+                {% endif %}
+                <span class="muted">({{ block.student_code }})</span>
+              </h3>
+            </header>
+            {% for dim in block.dimensions %}
+              <div class="student-dim">
+                <p class="dim-summary">
+                  <strong>{{ dim.name }}</strong>:
+                  AI {{ "%.0f"|format(dim.ai_score) if dim.ai_score is not none else "—" }}
+                  {% if dim.ai_band %}({{ dim.ai_band }}){% endif %}
+                  · Instructor {{ "%.0f"|format(dim.instructor_score) if dim.instructor_score is not none else "—" }}
+                </p>
+                {% if dim.ai_evidence %}
+                  <p><em>Evidence.</em> {{ dim.ai_evidence }}</p>
+                {% endif %}
+                {% if dim.ai_concerns %}
+                  <p><em>Concerns.</em> {{ dim.ai_concerns }}</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+            {% if block.transcript %}
+              <details class="transcript-toggle">
+                <summary>Conversation transcript</summary>
+                <ol class="transcript">
+                  {% for turn in block.transcript %}
+                    <li class="transcript-turn transcript-turn-{{ turn.role }}">
+                      <div class="turn-meta"><span class="turn-role">{{ turn.role }}</span></div>
+                      <div class="turn-content">{{ turn.content }}</div>
+                    </li>
+                  {% endfor %}
+                </ol>
+              </details>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </section>
+
+    </main>
+
+    <script>
+      const chartData = {{ chart_data_json | safe }};
+      const dims = Object.keys(chartData);
+
+      // Pick a "nice" tick step for a given numeric range. Generalizes across
+      // grading scales: 0-100 typically yields 5- or 10-point ticks,
+      // 0-4 GPA yields 0.5, German 1-6 yields 1, etc.
+      function niceStep(range, targetTicks) {
+        if (!isFinite(range) || range <= 0) return 1;
+        const rawStep = range / Math.max(1, targetTicks);
+        const exp = Math.floor(Math.log10(rawStep));
+        const base = Math.pow(10, exp);
+        const fraction = rawStep / base;
+        let nice;
+        if (fraction <= 1) nice = 1;
+        else if (fraction <= 2) nice = 2;
+        else if (fraction <= 2.5) nice = 2.5;
+        else if (fraction <= 5) nice = 5;
+        else nice = 10;
+        return nice * base;
+      }
+
+      function niceBounds(min, max, targetTicks = 6) {
+        if (min === max) {
+          const pad = Math.max(Math.abs(min) * 0.1, 1);
+          min -= pad;
+          max += pad;
+        }
+        const step = niceStep(max - min, targetTicks);
+        const lo = Math.floor(min / step) * step;
+        const hi = Math.ceil(max / step) * step;
+        return { lo, hi, step };
+      }
+
+      dims.forEach((dim, idx) => {
+        const series = chartData[dim];
+        if (!series.x.length) return;
+
+        const dataMin = Math.min(...series.x, ...series.y);
+        const dataMax = Math.max(...series.x, ...series.y);
+        const { lo, hi, step } = niceBounds(dataMin, dataMax, 6);
+
+        const scatterEl = document.getElementById(`scatter-${idx}`);
+        if (scatterEl) {
+          new Chart(scatterEl, {
+            type: "scatter",
+            data: {
+              datasets: [
+                {
+                  label: `${dim}: AI vs instructor`,
+                  data: series.x.map((x, i) => ({ x, y: series.y[i], label: series.labels[i] })),
+                  pointRadius: 5,
+                  backgroundColor: "#0b6b62",
+                },
+                {
+                  type: "line",
+                  label: "y = x",
+                  data: [{ x: lo, y: lo }, { x: hi, y: hi }],
+                  borderColor: "#888",
+                  borderDash: [4, 4],
+                  pointRadius: 0,
+                  fill: false,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  title: { display: true, text: "Instructor" },
+                  min: lo,
+                  max: hi,
+                  ticks: { stepSize: step },
+                },
+                y: {
+                  title: { display: true, text: "AI" },
+                  min: lo,
+                  max: hi,
+                  ticks: { stepSize: step },
+                },
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => {
+                      const p = ctx.raw;
+                      return p.label ? `${p.label}: AI ${p.y} vs instr ${p.x}` : `${p.y}, ${p.x}`;
+                    },
+                  },
+                },
+              },
+            },
+          });
+        }
+
+        const barsEl = document.getElementById(`bars-${idx}`);
+        if (barsEl) {
+          const pairs = series.x.map((x, i) => ({
+            label: series.labels[i],
+            diff: series.y[i] - x,
+          })).sort((a, b) => a.diff - b.diff);
+          const diffs = pairs.map((p) => p.diff);
+          const diffBounds = niceBounds(
+            Math.min(0, ...diffs),
+            Math.max(0, ...diffs),
+            6,
+          );
+          new Chart(barsEl, {
+            type: "bar",
+            data: {
+              labels: pairs.map((p) => p.label),
+              datasets: [
+                {
+                  label: "AI − instructor",
+                  data: diffs,
+                  backgroundColor: pairs.map((p) => (p.diff > 0 ? "#cc3333" : "#3366cc")),
+                },
+              ],
+            },
+            options: {
+              indexAxis: "y",
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: {
+                  title: { display: true, text: "AI − instructor" },
+                  min: diffBounds.lo,
+                  max: diffBounds.hi,
+                  ticks: { stepSize: diffBounds.step },
+                },
+              },
+            },
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

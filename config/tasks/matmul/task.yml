@@ -1,0 +1,22 @@
+title: Matrix Multiplication Problem Set
+artifact_label: Solved problem set
+upload_required: true
+allowed_uploads:
+  - extension: .pdf
+    mime_type: application/pdf
+  - extension: .png
+    mime_type: image/png
+  - extension: .jpg
+    mime_type: image/jpeg
+  - extension: .jpeg
+    mime_type: image/jpeg
+  - extension: .md
+    mime_type: text/markdown
+  - extension: .html
+    mime_type: text/html
+
+categories:
+  - Correctness
+  - Reasoning
+min_chat_seconds: 90
+min_student_replies: 4

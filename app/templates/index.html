@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Grader</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel setup-panel" id="setup-panel">
+        <div class="masthead">
+          <div>
+            <p class="eyebrow">AI grading conversation</p>
+            <h1>Student task grader</h1>
+          </div>
+          <a class="admin-link" href="/admin">Admin</a>
+        </div>
+
+        <form id="start-form" class="start-form">
+          <label>
+            Student code
+            <input id="code" name="code" type="text" autocomplete="off" required>
+          </label>
+          <label>
+            Task file
+            <input
+              id="artifact"
+              name="artifact"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+            >
+          </label>
+          <button type="submit">Start conversation</button>
+        </form>
+
+        <p class="note">
+          If the task requires a file, accepted formats are set by that task.
+          Maximum size: {{ max_upload_mb }} MB. Default attempts per student:
+          {{ max_attempts_per_student }}.
+        </p>
+      </section>
+
+      <section class="panel chat-panel is-hidden" id="chat-panel">
+        <div class="chat-header">
+          <div>
+            <p class="eyebrow" id="student-name">Student</p>
+            <h1 id="task-title">Task conversation</h1>
+          </div>
+          <div class="progress">
+            <span id="timer">00:00</span>
+            <span id="reply-count">0 / {{ min_student_replies }} replies</span>
+          </div>
+        </div>
+
+        <div class="transcript" id="transcript" aria-live="polite"></div>
+
+        <form id="chat-form" class="chat-form">
+          <textarea
+            id="message"
+            rows="4"
+            placeholder="Type your response..."
+            required
+          ></textarea>
+          <div class="chat-actions">
+            <button type="button" id="finish-button" class="secondary" disabled>
+              Finish
+            </button>
+            <button type="submit" id="send-button">Send</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel final-panel is-hidden" id="final-panel">
+        <p class="eyebrow">Conversation complete</p>
+        <h1>Thanks so much for telling me about your work.</h1>
+        <p class="note">Your instructor can now review the conversation.</p>
+      </section>
+
+      <div class="toast is-hidden" id="status-message"></div>
+    </main>
+
+    <script>
+      window.APP_CONFIG = {
+        minChatSeconds: {{ min_chat_seconds }},
+        minStudentReplies: {{ min_student_replies }}
+      };
+    </script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

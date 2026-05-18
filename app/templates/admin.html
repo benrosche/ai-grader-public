@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Grader Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="shell admin-shell">
+      <section class="panel">
+        <div class="masthead">
+          <div>
+            <p class="eyebrow">Instructor</p>
+            <h1>AI grader admin</h1>
+          </div>
+          <a class="admin-link" href="/">Student view</a>
+        </div>
+
+        <div class="tasks-overview">
+          <div class="tasks-overview-count">
+            <span class="metric-value">{{ task_rows | length }}</span>
+            <span class="metric-label">{% if task_rows | length == 1 %}task{% else %}tasks{% endif %}</span>
+          </div>
+          <p class="tasks-overview-help">
+            Each task is a folder on the persistent volume with four files.
+            <code>task.yml</code> sets the title, upload rules, and the list of grading dimensions.
+            <code>conversation-guidance.md</code> defines the assistant's scripted opening line and how it should behave during the chat.
+            <code>grading-guidance.md</code> is the rubric the AI uses when scoring each dimension.
+            <code>student_codes.csv</code> is the roster of codes that can start a session.
+            Use the buttons below to create or edit one.
+          </p>
+          <a class="button-link button-link-primary" href="/admin/task/new">New task</a>
+        </div>
+      </section>
+
+      {% for row in task_rows %}
+        <section class="panel task-panel" data-task-id="{{ row.task.task_id }}" data-instructor-endpoint="{{ row.instructor_grade_href }}">
+          <details class="task-details" open>
+            <summary class="task-summary">
+              <span class="task-summary-toggle" aria-hidden="true"></span>
+              <span class="task-summary-meta">
+                <span class="eyebrow">{{ row.task.task_id }}</span>
+                <span class="task-summary-title">{{ row.task.title }}</span>
+                <span class="task-summary-stats">{{ row.completed_count }} completed · {{ row.active_count }} active</span>
+              </span>
+              <span class="task-actions">
+                <a class="button-link" href="{{ row.analysis_href }}" onclick="event.stopPropagation()">View analysis</a>
+                <a class="button-link" href="{{ row.csv_href }}" onclick="event.stopPropagation()">Download CSV</a>
+                <a class="button-link" href="{{ row.edit_task_href }}" onclick="event.stopPropagation()">Edit task</a>
+                <button type="button" class="button-link button-link-danger delete-task" data-delete-url="{{ row.delete_task_href }}" data-task-title="{{ row.task.title }}">Delete task</button>
+              </span>
+            </summary>
+
+          <h3>Sessions and Results</h3>
+          {% if row.session_rows %}
+            <div class="table-scroll">
+              <table class="sessions-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Student</th>
+                    <th>Code</th>
+                    <th>Attempt</th>
+                    <th>Progress</th>
+                    <th>Dimension</th>
+                    <th>AI grade</th>
+                    <th>Instructor</th>
+                    <th>Review</th>
+                    <th>Conversation</th>
+                    <th>File</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for session in row.session_rows %}
+                    {% set dim_count = session.dimensions | length or 1 %}
+                    {% for dim in session.dimensions %}
+                      <tr class="{% if loop.first %}session-first{% endif %} {% if loop.last %}session-last{% endif %}">
+                        {% if loop.first %}
+                          <td rowspan="{{ dim_count }}">
+                            <span class="status-pill {{ session.status | lower }}">{{ session.status }}</span>
+                          </td>
+                          <td rowspan="{{ dim_count }}">{{ session.timestamp or "-" }}</td>
+                          <td rowspan="{{ dim_count }}">
+                            {% if session.session_href %}
+                              <a href="{{ session.session_href }}">{{ session.student_name }}</a>
+                            {% else %}
+                              {{ session.student_name }}
+                            {% endif %}
+                          </td>
+                          <td rowspan="{{ dim_count }}">{{ session.student_code }}</td>
+                          <td rowspan="{{ dim_count }}">{{ session.attempt_number }}</td>
+                          <td rowspan="{{ dim_count }}">{{ session.progress }}</td>
+                        {% endif %}
+                        <td>{{ dim.name }}</td>
+                        <td>
+                          {% if dim.ai_score %}
+                            <span class="ai-grade">{{ dim.ai_score }}</span>
+                            {% if dim.ai_band %}<span class="ai-band">{{ dim.ai_band }}</span>{% endif %}
+                          {% else %}
+                            <span class="muted">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if dim.editable %}
+                            <span class="instructor-input">
+                              <input type="number" min="0" max="100" step="1"
+                                     class="instructor-score"
+                                     value="{{ dim.instructor_score }}"
+                                     data-session-id="{{ session.session_id }}"
+                                     data-dimension="{{ dim.name }}">
+                              <span class="save-state" aria-live="polite"></span>
+                            </span>
+                          {% else %}
+                            <span class="muted">-</span>
+                          {% endif %}
+                        </td>
+                        {% if loop.first %}
+                          <td rowspan="{{ dim_count }}">{{ session.review_status or "-" }}</td>
+                          <td rowspan="{{ dim_count }}">
+                            {% if session.conversation_link %}
+                              <a href="{{ session.conversation_link.href }}">JSON</a>
+                            {% else %}
+                              <span class="muted">-</span>
+                            {% endif %}
+                          </td>
+                          <td rowspan="{{ dim_count }}">
+                            {% if session.upload_link %}
+                              <a href="{{ session.upload_link.href }}">File</a>
+                            {% else %}
+                              <span class="muted">-</span>
+                            {% endif %}
+                          </td>
+                          <td rowspan="{{ dim_count }}">
+                            {% if session.delete_href %}
+                              <button type="button" class="delete-session" data-delete-url="{{ session.delete_href }}" data-student-name="{{ session.student_name }}" aria-label="Delete session for {{ session.student_name }}">Delete</button>
+                            {% endif %}
+                          </td>
+                        {% endif %}
+                      </tr>
+                    {% endfor %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="note">No sessions or results yet.</p>
+          {% endif %}
+          </details>
+        </section>
+      {% endfor %}
+    </main>
+
+    <script>
+      (function () {
+        const inputs = document.querySelectorAll(".instructor-score");
+        const timers = new WeakMap();
+
+        function setState(span, kind, message) {
+          if (!span) return;
+          span.dataset.state = kind;
+          span.textContent = message;
+        }
+
+        async function save(input) {
+          const panel = input.closest("[data-instructor-endpoint]");
+          if (!panel) return;
+          const endpoint = panel.dataset.instructorEndpoint;
+          const span = input.parentElement.querySelector(".save-state");
+          const body = {
+            session_id: input.dataset.sessionId,
+            dimension: input.dataset.dimension,
+            score: input.value === "" ? null : input.value,
+          };
+          setState(span, "saving", "Saving…");
+          try {
+            const res = await fetch(endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+              credentials: "same-origin",
+            });
+            if (!res.ok) {
+              const detail = await res.text();
+              throw new Error(detail || res.statusText);
+            }
+            setState(span, "saved", "Saved");
+            setTimeout(() => {
+              if (span.dataset.state === "saved") setState(span, "", "");
+            }, 1500);
+          } catch (err) {
+            console.error(err);
+            setState(span, "error", "Error");
+          }
+        }
+
+        inputs.forEach((input) => {
+          input.addEventListener("input", () => {
+            const existing = timers.get(input);
+            if (existing) clearTimeout(existing);
+            timers.set(input, setTimeout(() => save(input), 400));
+          });
+          input.addEventListener("blur", () => {
+            const existing = timers.get(input);
+            if (existing) {
+              clearTimeout(existing);
+              timers.delete(input);
+              save(input);
+            }
+          });
+        });
+
+        const TASK_OPEN_KEY = "aiGraderTaskOpen";
+        let openMap = {};
+        try {
+          openMap = JSON.parse(localStorage.getItem(TASK_OPEN_KEY) || "{}");
+        } catch (_) {}
+
+        document.querySelectorAll(".task-panel").forEach((panel) => {
+          const details = panel.querySelector(".task-details");
+          const id = panel.dataset.taskId;
+          if (!details || !id) return;
+          if (Object.prototype.hasOwnProperty.call(openMap, id)) {
+            details.open = !!openMap[id];
+          }
+          details.addEventListener("toggle", () => {
+            openMap[id] = details.open;
+            try {
+              localStorage.setItem(TASK_OPEN_KEY, JSON.stringify(openMap));
+            } catch (_) {}
+          });
+        });
+
+        document.querySelectorAll(".delete-task").forEach((btn) => {
+          btn.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            const title = btn.dataset.taskTitle || "this task";
+            if (!confirm(`Delete all data for "${title}"? This removes ai_marks.csv, every conversation, and every upload. The task configuration is kept so new sessions can still start. This cannot be undone.`)) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              const res = await fetch(btn.dataset.deleteUrl, {
+                method: "POST",
+                credentials: "same-origin",
+              });
+              if (!res.ok) {
+                const detail = await res.text();
+                throw new Error(detail || res.statusText);
+              }
+              window.location.reload();
+            } catch (err) {
+              console.error(err);
+              alert("Could not delete task data: " + err.message);
+              btn.disabled = false;
+            }
+          });
+        });
+
+        document.querySelectorAll(".delete-session").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const name = btn.dataset.studentName || "this session";
+            if (!confirm(`Delete the session for ${name}? This removes all dimension rows, the conversation, and the upload. This cannot be undone.`)) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              const res = await fetch(btn.dataset.deleteUrl, {
+                method: "POST",
+                credentials: "same-origin",
+              });
+              if (!res.ok) {
+                const detail = await res.text();
+                throw new Error(detail || res.statusText);
+              }
+              window.location.reload();
+            } catch (err) {
+              console.error(err);
+              alert("Could not delete session: " + err.message);
+              btn.disabled = false;
+            }
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

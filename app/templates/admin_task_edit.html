@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if mode == "new" %}New task{% else %}Edit {{ task_id }}{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="shell admin-shell">
+      <section class="panel">
+        <div class="masthead">
+          <div>
+            <p class="eyebrow">{% if mode == "new" %}New task{% else %}Edit task{% endif %}</p>
+            <h1>{% if mode == "new" %}Create a new task{% else %}{{ task_id }}{% endif %}</h1>
+          </div>
+          <a class="admin-link" href="/admin">← Back to admin</a>
+        </div>
+        <p class="note">
+          Files are saved to <code>{{ '{data_dir}/<task_id>/' }}</code> on the persistent volume.
+          Validation runs on save — invalid YAML or a missing required field will be rejected and the previous contents restored.
+        </p>
+      </section>
+
+      <form id="task-form" data-mode="{{ mode }}" data-save-href="{{ save_href }}">
+        <section class="panel">
+          <label class="field">
+            <span class="field-label">Task ID</span>
+            <input type="text" name="task_id" value="{{ task_id }}"
+                   {% if mode == "edit" %}readonly{% else %}required pattern="[a-z0-9][a-z0-9_-]*" placeholder="e.g. midterm-essay"{% endif %}>
+            <span class="field-hint">Lowercase letters, numbers, hyphens, or underscores. Used as the folder name; cannot be changed after creation.</span>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>task.yml</h2>
+          <textarea name="task_yml" rows="14" spellcheck="false" required>{{ files.task_yml }}</textarea>
+          <p class="field-hint">Required fields: <code>title</code>, <code>categories</code> (non-empty list), <code>allowed_uploads</code>.</p>
+        </section>
+
+        <section class="panel">
+          <h2>conversation-guidance.md</h2>
+          <textarea name="conversation_guidance" rows="14" spellcheck="false" required>{{ files.conversation_guidance }}</textarea>
+          <p class="field-hint">Must include a <code>first_message:</code> block (the assistant's opening line).</p>
+        </section>
+
+        <section class="panel">
+          <h2>grading-guidance.md</h2>
+          <textarea name="grading_guidance" rows="14" spellcheck="false" required>{{ files.grading_guidance }}</textarea>
+        </section>
+
+        <section class="panel">
+          <h2>student_codes.csv</h2>
+          <textarea name="student_codes" rows="12" spellcheck="false" required>{{ files.student_codes }}</textarea>
+          <p class="field-hint">Columns: <code>code,student_name,student_id</code>. Optional: <code>attempt_limit</code>, <code>attempts_taken</code>.</p>
+        </section>
+
+        <section class="panel form-actions">
+          <span id="save-error" class="save-error"></span>
+          <button type="submit" class="button-link button-link-primary">{% if mode == "new" %}Create task{% else %}Save changes{% endif %}</button>
+          <a class="button-link" href="/admin">Cancel</a>
+        </section>
+      </form>
+    </main>
+
+    <script>
+      (function () {
+        const form = document.getElementById("task-form");
+        if (!form) return;
+        const errEl = document.getElementById("save-error");
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          errEl.textContent = "";
+          const data = new FormData(form);
+          const payload = {
+            mode: form.dataset.mode,
+            task_id: (data.get("task_id") || "").trim(),
+            files: {
+              task_yml: data.get("task_yml") || "",
+              conversation_guidance: data.get("conversation_guidance") || "",
+              grading_guidance: data.get("grading_guidance") || "",
+              student_codes: data.get("student_codes") || "",
+            },
+          };
+          const button = form.querySelector("button[type=submit]");
+          button.disabled = true;
+          try {
+            const res = await fetch(form.dataset.saveHref, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              credentials: "same-origin",
+            });
+            if (!res.ok) {
+              let detail = res.statusText;
+              try {
+                const body = await res.json();
+                if (body && body.detail) detail = body.detail;
+              } catch (_) {}
+              throw new Error(detail);
+            }
+            window.location.href = "/admin";
+          } catch (err) {
+            errEl.textContent = err.message;
+            button.disabled = false;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

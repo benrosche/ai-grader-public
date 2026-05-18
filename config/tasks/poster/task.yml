@@ -1,0 +1,17 @@
+title: SNA Poster Presentation
+artifact_label: Poster file
+upload_required: true
+allowed_uploads:
+  - extension: .pdf
+    mime_type: application/pdf
+  - extension: .png
+    mime_type: image/png
+  - extension: .jpg
+    mime_type: image/jpeg
+  - extension: .jpeg
+    mime_type: image/jpeg
+categories:
+  - Poster
+  - Presentation
+min_chat_seconds: 300
+min_student_replies: 10

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Session — {{ student.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="session-shell">
+      <header class="session-header">
+        <div>
+          <p class="eyebrow">{{ task.task_id }} — attempt {{ attempt_number }}</p>
+          <h1>{{ student.name }}</h1>
+          <p class="muted">
+            Code: {{ student.code }}
+            {% if student.student_id %} &middot; ID: {{ student.student_id }}{% endif %}
+            {% if started_at %} &middot; Started: {{ started_at }}{% endif %}
+            {% if saved_at %} &middot; Saved: {{ saved_at }}{% endif %}
+          </p>
+        </div>
+        <a class="admin-link" href="/admin">← Back to admin</a>
+      </header>
+
+      <div class="session-split">
+        <section class="session-pane transcript-pane">
+          <h2>Conversation</h2>
+          {% if transcript %}
+            <ol class="transcript">
+              {% for turn in transcript %}
+                <li class="transcript-turn transcript-turn-{{ turn.role }}">
+                  <div class="turn-meta">
+                    <span class="turn-role">{{ turn.role }}</span>
+                    {% if turn.timestamp %}<span class="turn-time">{{ turn.timestamp }}</span>{% endif %}
+                  </div>
+                  <div class="turn-content">{{ turn.content }}</div>
+                </li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <p class="note">No transcript recorded.</p>
+          {% endif %}
+
+          {% if judge_result %}
+            <details class="judge-block">
+              <summary>AI judge result (raw JSON)</summary>
+              <pre>{{ judge_result | tojson(indent=2) }}</pre>
+            </details>
+          {% endif %}
+        </section>
+
+        <section class="session-pane upload-pane">
+          <h2>Upload</h2>
+          {% if upload_href %}
+            {% if upload_mime.startswith("image/") %}
+              <img src="{{ upload_href }}" alt="Student upload" class="upload-image">
+            {% else %}
+              <iframe src="{{ upload_href }}" title="Student upload" class="upload-frame"></iframe>
+            {% endif %}
+            <p class="muted">
+              <a href="{{ upload_href }}" target="_blank" rel="noopener">Open in new tab</a>
+              {% if upload_download_href %}
+                &middot; <a href="{{ upload_download_href }}">Download</a>
+              {% endif %}
+            </p>
+          {% else %}
+            <p class="note">No upload available.</p>
+          {% endif %}
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
