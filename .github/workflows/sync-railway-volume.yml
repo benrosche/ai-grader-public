@@ -2,8 +2,11 @@ name: Sync Railway volume files
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 3 * * *"
+  # Scheduled run disabled in the public template — this repo has no
+  # RAILWAY_API_TOKEN / RAILWAY_SSH_PRIVATE_KEY secrets configured.
+  # Uncomment in the private instance to mirror the Railway volume nightly.
+  # schedule:
+  #   - cron: "0 3 * * *"
 
 permissions:
   contents: write
